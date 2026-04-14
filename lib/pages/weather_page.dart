@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:lottie/lottie.dart';
 import 'package:intl/intl.dart';
+
 import 'package:weather_app/services/weather_service.dart';
 import 'package:weather_app/models/weather_model.dart';
 import 'package:weather_app/models/forecast_model.dart';
@@ -18,6 +19,7 @@ class WeatherPage extends StatefulWidget {
 
 class _WeatherPageState extends State<WeatherPage>
     with SingleTickerProviderStateMixin {
+  // --- Constants ---
   static const String _apiKey =
       '291cef864197d525c10a970bd57d4006';
   static const int _forecastDays = 5;
@@ -26,12 +28,13 @@ class _WeatherPageState extends State<WeatherPage>
   static const double _cardBorderRadius = 16.0;
   static const double _forecardIconSize = 34.0;
 
+  // --- Services & State ---
   final _weatherService = WeatherService(_apiKey);
-
   Weather? _weather;
   List<DailyForecast> _forecast = [];
   bool _isLoading = true;
 
+  // --- Animations ---
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
 
@@ -41,6 +44,14 @@ class _WeatherPageState extends State<WeatherPage>
     _setupAnimation();
     _fetchWeatherData();
   }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  // --- Initialization & Logic ---
 
   void _setupAnimation() {
     _animController = AnimationController(
@@ -63,18 +74,16 @@ class _WeatherPageState extends State<WeatherPage>
 
       final position =
           await _getCurrentPosition();
+      final lat = position.latitude;
+      final lon = position.longitude;
 
+      // Fetch weather and forecast in parallel
       final weather = await _weatherService
-          .getWeatherByCoords(
-            position.latitude,
-            position.longitude,
-          );
-
+          .getWeatherByCoords(lat, lon);
       final forecast = await _weatherService
-          .getForecastByCoords(
-            position.latitude,
-            position.longitude,
-          );
+          .getForecastByCoords(lat, lon);
+
+      if (!mounted) return;
 
       setState(() {
         _weather = weather;
@@ -84,7 +93,8 @@ class _WeatherPageState extends State<WeatherPage>
 
       _animController.forward();
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted)
+        setState(() => _isLoading = false);
     }
   }
 
@@ -107,14 +117,13 @@ class _WeatherPageState extends State<WeatherPage>
   }
 
   Future<Position> _getCurrentPosition() async {
-    return Geolocator.getCurrentPosition(
+    return await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
       ),
     );
   }
 
-  /// Filters forecast to exclude today and return the next 5 days
   List<DailyForecast> _filterForecast(
     List<DailyForecast> forecast,
   ) {
@@ -138,11 +147,7 @@ class _WeatherPageState extends State<WeatherPage>
         .toList();
   }
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
+  // --- UI Components ---
 
   @override
   Widget build(BuildContext context) {
@@ -156,16 +161,18 @@ class _WeatherPageState extends State<WeatherPage>
       gradientColors,
     );
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: gradientColors,
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: gradientColors,
         ),
-        child: SafeArea(
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: _buildAppBar(textColor),
+        body: SafeArea(
           child: _isLoading
               ? _buildLoadingState()
               : _buildWeatherContent(textColor),
@@ -174,8 +181,27 @@ class _WeatherPageState extends State<WeatherPage>
     );
   }
 
+  PreferredSizeWidget _buildAppBar(
+    Color textColor,
+  ) {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      iconTheme: IconThemeData(color: textColor),
+      actions: [
+        IconButton(
+          icon: const Icon(
+            Icons.menu,
+            color: AppColors.primaryWhite,
+          ),
+          onPressed: () {},
+        ),
+      ],
+    );
+  }
+
   Widget _buildLoadingState() {
-    return Center(
+    return const Center(
       child: CircularProgressIndicator(
         color: AppColors.primaryWhite,
       ),
@@ -282,9 +308,9 @@ class _WeatherPageState extends State<WeatherPage>
                   mainAxisSize: MainAxisSize.min,
                   children: _forecast
                       .map(
-                        (dayWeather) =>
+                        (day) =>
                             _buildForecastDay(
-                              dayWeather,
+                              day,
                               textColor,
                             ),
                       )
@@ -302,10 +328,9 @@ class _WeatherPageState extends State<WeatherPage>
     DailyForecast dayWeather,
     Color textColor,
   ) {
-    final day = DateFormat(
+    final dayLabel = DateFormat(
       'E',
     ).format(dayWeather.date);
-
     final avgTemp =
         ((dayWeather.tempMin +
             dayWeather.tempMax) /
@@ -319,7 +344,7 @@ class _WeatherPageState extends State<WeatherPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            day,
+            dayLabel,
             style: TextStyle(
               color: textColor.withOpacity(0.7),
               fontSize: 11,
